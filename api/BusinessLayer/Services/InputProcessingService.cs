@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.Extensions.Logging;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -12,6 +13,20 @@ namespace BusinessLayer.Services;
 /// </summary>
 public class InputProcessingService : IInputProcessingService
 {
+    /// <summary>
+    /// Logger
+    /// </summary>
+    private readonly ILogger<InputProcessingService> _logger;
+
+    /// <summary>
+    /// Main constructor for the InputProcessingService class that takes in a logger instance for logging purposes.
+    /// </summary>
+    /// <param name="logger">Logger</param>
+    public InputProcessingService(ILogger<InputProcessingService> logger)
+    {
+        _logger = logger;
+    }
+
     /// <summary>
     /// Process the input string by sorting the characters in the input string by ascending order of their occurrence in the input string.
     /// </summary>
@@ -27,6 +42,7 @@ public class InputProcessingService : IInputProcessingService
 
         // Convert the input string to a base64 encoded string
         var base64EncodedInput = Convert.ToBase64String(Encoding.UTF8.GetBytes(input));
+        _logger.LogInformation("Base64 encoded input: {Base64EncodedInput}", base64EncodedInput);
 
         foreach (var c in input)
         {
@@ -35,9 +51,10 @@ public class InputProcessingService : IInputProcessingService
                 inputCharacterCounts[c]++;
             else
                 inputCharacterCounts[c] = 1;
-            
+
             // NOTE: This is likely not needed in this loop as string sorting is very fast.
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+                break;
         }
 
         // sort the dictionary by the character count in ascending order and then by the character itself in ascending order
@@ -51,7 +68,8 @@ public class InputProcessingService : IInputProcessingService
 
         // append the rest of the response string
         responseBuilder.Append($"/{base64EncodedInput}");
-
-        return Task.FromResult(responseBuilder.ToString());
+        var response = responseBuilder.ToString();
+        _logger.LogDebug("Processed response: {Response}", response);
+        return Task.FromResult(response);
     }
 }
