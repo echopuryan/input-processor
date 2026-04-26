@@ -2,5 +2,6 @@
   <Folder Name="/Solution Items/">
     <File Path="Dockerfile" />
   </Folder>
-  <Project Path="api-input-processor/api-input-processor.csproj" />
+  <Project Path="API/API.csproj" />
+  <Project Path="BusinessLayer/BusinessLayer.csproj" Id="fd552523-106a-407c-ab07-4452d634ce05" />
 </Solution>
