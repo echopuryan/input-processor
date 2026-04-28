@@ -19,5 +19,10 @@ services:
   api:
     build:
       context: ./api
-      dockerfile: Dockerfile
     restart: unless-stopped
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    environment:
+      - ASPNETCORE_URLS=http://+:5000
