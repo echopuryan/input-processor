@@ -31,6 +31,21 @@ public class InputProcessorController : ControllerBase
     }
 
     /// <summary>
+    /// Simple get request to imitates the api returning some estimation on how long the processing will take. Currently it's simply the size of the processed string.
+    /// </summary>
+    /// <param name="input"></param>
+    /// <param name="cancellationToken"></param>
+    /// <returns></returns>
+    [HttpGet("estimate")]
+    public async Task<IActionResult> GetEstimatedProcessingTime([FromQuery] string input, CancellationToken cancellationToken)
+    {
+        // TODO: implement with memory cache only
+        var processedInput = await _inputProcessingService.ProcessInputAsync(input, cancellationToken);
+
+        return new JsonResult(new { Size = processedInput.Length });
+    }
+
+    /// <summary>
     /// Process the user input and stream the processed response back one character at a time with a random delay between each character to simulate a real-time streaming response. 
     /// The client can cancel the request at any time using the cancellation token.
     /// </summary>
@@ -47,7 +62,7 @@ public class InputProcessorController : ControllerBase
         var processedInput = await _inputProcessingService.ProcessInputAsync(input.UserInput, cancellationToken);
         _logger.LogInformation("Processed input: '{ProcessedInput}'", processedInput);
 
-        foreach(var character in processedInput)
+        foreach (var character in processedInput)
         {
             if (cancellationToken.IsCancellationRequested)
             {
@@ -61,8 +76,8 @@ public class InputProcessorController : ControllerBase
             await Task.Delay(new Random().Next(1000, 5000), cancellationToken); // Simulate random delay between characters
         }
 
-        // NOTE: Remove this, might not be needed
-        await Response.WriteAsync("data: [DONE]\n\n", cancellationToken);
-        await Response.Body.FlushAsync(cancellationToken);
+        // // NOTE: Remove this, might not be needed
+        // await Response.WriteAsync("data: [DONE]\n\n", cancellationToken);
+        // await Response.Body.FlushAsync(cancellationToken);
     }
 }
