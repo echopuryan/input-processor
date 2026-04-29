@@ -1,10 +1,18 @@
 using Scalar.AspNetCore;
 using BusinessLayer;
+using NLog.Extensions.Logging;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddBusinessLayerServices();
+
+builder.Services.AddMemoryCache();
+builder.Services.AddLogging(loggingBuilder =>
+{
+    loggingBuilder.ClearProviders();
+    loggingBuilder.AddNLog(builder.Configuration);
+});
 
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
