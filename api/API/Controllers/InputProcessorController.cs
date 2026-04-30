@@ -1,6 +1,8 @@
 ﻿using API.Models;
+using API.Settings;
 using BusinessLayer.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace API.Controllers;
 
@@ -19,15 +21,20 @@ public class InputProcessorController : ControllerBase
     /// Service for processing user inputs
     /// </summary>
     private readonly IInputProcessingService _inputProcessingService;
+    /// <summary>
+    /// App settings
+    /// </summary>
+    private readonly AppSettings _appSettings;
 
     /// <summary>
     /// Initializes a new instance of the InputProcessorController class with the specified logger.
     /// </summary>
     /// <param name="logger">The logger used to record diagnostic and operational information for the controller. Cannot be null.</param>
-    public InputProcessorController(ILogger<InputProcessorController> logger, IInputProcessingService inputProcessingService)
+    public InputProcessorController(ILogger<InputProcessorController> logger, IInputProcessingService inputProcessingService, IOptions<AppSettings> appSettings)
     {
         _logger = logger;
         _inputProcessingService = inputProcessingService;
+        _appSettings = appSettings.Value;
     }
 
     /// <summary>
@@ -75,7 +82,7 @@ public class InputProcessorController : ControllerBase
                 _logger.LogDebug("Streaming character: {Character}", character);
                 await Response.WriteAsync(character.ToString(), cancellationToken);
                 await Response.Body.FlushAsync(cancellationToken);
-                await Task.Delay(new Random().Next(1000, 5000), cancellationToken); // Simulate random delay between characters
+                await Task.Delay(new Random().Next(_appSettings.RandomDelayRange.Min, _appSettings.RandomDelayRange.Max), cancellationToken); // Simulate random delay between characters
             }
         }
         catch (OperationCanceledException)

@@ -1,9 +1,11 @@
 ﻿using API.Controllers;
 using API.Models;
+using API.Settings;
 using BusinessLayer.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 
 namespace API.Tests.Controllers;
@@ -15,13 +17,19 @@ public class InputProcessorControllerTests
     private DefaultHttpContext _httpContext;
     private MemoryStream _responseBody;
 
+    private AppSettings _appSettings = new AppSettings { RandomDelayRange = new RandomDelayRangeSettings { Min = 100, Max = 200 } };
+
     private readonly Mock<ILogger<InputProcessorController>> _loggerMock = new();
     private readonly Mock<IInputProcessingService> _inputProcessorServiceMock = new();
+    private readonly Mock<IOptions<AppSettings>> _appSettingsMock = new();
+
 
     [TestInitialize]
     public void Setup()
     {
-        _controller = new InputProcessorController(_loggerMock.Object, _inputProcessorServiceMock.Object);
+        _appSettingsMock.SetupGet(s => s.Value).Returns(_appSettings);
+
+        _controller = new InputProcessorController(_loggerMock.Object, _inputProcessorServiceMock.Object, _appSettingsMock.Object);
 
         _responseBody = new MemoryStream();
         _httpContext = new DefaultHttpContext();
@@ -157,6 +165,9 @@ public class InputProcessorControllerTests
             .Setup(s => s.ProcessInputAsync("abcd", It.IsAny<CancellationToken>()))
             .ReturnsAsync("dcba");
 
+        _appSettings.RandomDelayRange.Min = 500; // Increase delay to ensure we can cancel mid-stream
+        _appSettings.RandomDelayRange.Max = 3000;
+
         using var cts = new CancellationTokenSource();
 
         // Cancel after a short delay - should interrupt mid-stream
@@ -173,6 +184,9 @@ public class InputProcessorControllerTests
         // Should have at least one character but not all
         Assert.IsTrue(written.Length > 0, "Should have written at least one character");
         Assert.IsTrue(written.Length < 4, "Should not have written all characters");
+
+        _appSettings.RandomDelayRange.Min = 100;
+        _appSettings.RandomDelayRange.Max = 200;
     }
 
     [TestMethod]
