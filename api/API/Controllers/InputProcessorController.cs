@@ -62,22 +62,26 @@ public class InputProcessorController : ControllerBase
         var processedInput = await _inputProcessingService.ProcessInputAsync(input.UserInput, cancellationToken);
         _logger.LogInformation("Processed input: '{ProcessedInput}'", processedInput);
 
-        foreach (var character in processedInput)
+        try
         {
-            if (cancellationToken.IsCancellationRequested)
+            foreach (var character in processedInput)
             {
-                _logger.LogInformation("Request cancelled by the client.");
-                break;
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    _logger.LogInformation("Request cancelled by the client.");
+                    break;
+                }
+
+                _logger.LogDebug("Streaming character: {Character}", character);
+                await Response.WriteAsync(character.ToString(), cancellationToken);
+                await Response.Body.FlushAsync(cancellationToken);
+                await Task.Delay(new Random().Next(1000, 5000), cancellationToken); // Simulate random delay between characters
             }
-
-            _logger.LogDebug("Streaming character: {Character}", character);
-            await Response.WriteAsync(character.ToString());
-            await Response.Body.FlushAsync();
-            await Task.Delay(new Random().Next(1000, 5000), cancellationToken); // Simulate random delay between characters
         }
-
-        // // NOTE: Remove this, might not be needed
-        // await Response.WriteAsync("data: [DONE]\n\n", cancellationToken);
-        // await Response.Body.FlushAsync(cancellationToken);
+        catch (OperationCanceledException)
+        {
+            // here to simply log or do something else if needed
+            _logger.LogInformation("Request cancelled by the client.");
+        }
     }
 }

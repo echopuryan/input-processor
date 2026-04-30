@@ -1,0 +1,40 @@
+.container {
+  display: grid;
+
+  grid-template: 1fr auto auto 1fr 1fr/ 1fr;
+
+  gap: 1rem 0;
+  place-self: center;
+  height: 100%;
+}
+
+.input {
+  display: flex;
+  flex-direction: column;
+  /* grid-template: 1fr /1fr; */
+}
+
+.progress {
+  margin-top: 0.5rem;
+}
+
+.actions {
+  display: grid;
+  grid-template: 1fr / 1fr 1fr;
+
+  gap: 0 1rem;
+}
+
+.response {
+  display: grid;
+
+  justify-self: center;
+  text-align: center;
+
+  grid-template: 1fr / 1fr auto;
+  gap: 0 0.5rem;
+
+  > span {
+    display: flex;
+  }
+}
