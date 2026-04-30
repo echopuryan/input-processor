@@ -26,6 +26,6 @@ FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
 
-EXPOSE 5000
+# EXPOSE 5000
 
 ENTRYPOINT ["dotnet", "API.dll"]

@@ -50,7 +50,11 @@ function InputProcessor() {
         <Progress value={progress} className={styles.progress} />
       </div>
 
-      {error && <Text size="md">{error}</Text>}
+      {error && (
+        <Text size="md" c="red">
+          {error}
+        </Text>
+      )}
       <section className={styles.actions}>
         <Button variant="outline" disabled={isProcessing || !text} onClick={onProcessClick} loading={isProcessing}>
           Process

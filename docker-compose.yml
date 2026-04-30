@@ -31,14 +31,17 @@ services:
     build:
       context: ./api
     restart: unless-stopped
-    ports:
-      - "5000:5000"
+    expose:
+      - "5000"
     env_file:
       - .env
     environment:
       - ASPNETCORE_URLS=http://+:5000
     networks:
       - app-network
+    # Can be used for scaling
+    # deploy:
+    #   replicas: 2
 
 networks:
   app-network:
