@@ -42,7 +42,7 @@ public class InputProcessorController : ControllerBase
         // TODO: implement with memory cache only
         var processedInput = await _inputProcessingService.ProcessInputAsync(input, cancellationToken);
 
-        return new JsonResult(new { Size = processedInput.Length });
+        return new JsonResult(new ProcessingEstimateModel { Size = processedInput.Length });
     }
 
     /// <summary>
