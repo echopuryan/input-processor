@@ -5,6 +5,8 @@ import styles from "./InputProcessor.module.css";
 
 import { userInputProcessor } from "../hooks/useInputProcessor";
 
+import ProgressBar from "../../progress-bar/components/ProgressBar";
+
 /**
  * Component for input processing
  */
@@ -47,7 +49,7 @@ function InputProcessor() {
       <h1>Process Your Text</h1>
       <div className={styles.input}>
         <Input placeholder="Input component" value={text} onChange={onInputChange} disabled={isProcessing} loading={isProcessing} />
-        <Progress value={progress} className={styles.progress} />
+        <ProgressBar progress={progress} />
       </div>
 
       {error && (

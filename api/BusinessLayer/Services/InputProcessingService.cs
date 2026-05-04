@@ -79,7 +79,8 @@ public class InputProcessingService : IInputProcessingService
             }
 
             // sort the dictionary by the character count in ascending order and then by the character itself in ascending order
-            var sortedCharacters = inputCharacterCounts.OrderBy(c => c.Value).ThenBy(c => c.Key).ToList();
+            // var sortedCharacters = inputCharacterCounts.OrderBy(c => c.Value).ThenBy(c => c.Key).ToList();
+            var sortedCharacters = inputCharacterCounts.OrderBy(c => c.Key).ToList();
 
             var responseBuilder = new StringBuilder();
             foreach (var c in sortedCharacters)
