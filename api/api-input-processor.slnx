@@ -2,8 +2,15 @@
   <Folder Name="/Solution Items/">
     <File Path="Dockerfile" />
   </Folder>
-  <Project Path="API.Tests/API.Tests.csproj" Id="bb7ca147-f761-4ee7-b78f-3f16948d1e44" />
+  <Folder Name="/Tests/">
+    <Project Path="API.Tests/API.Tests.csproj" Id="bb7ca147-f761-4ee7-b78f-3f16948d1e44">
+      <Build Solution="Debug|*" Project="false" />
+    </Project>
+    <Project Path="BusinessLayer.Tests/BusinessLayer.Tests.csproj" Id="48457a11-127c-4b90-a77a-6fdd0c7362be">
+      <Build Solution="Debug|*" Project="false" />
+    </Project>
+  </Folder>
   <Project Path="API/API.csproj" />
-  <Project Path="BusinessLayer.Tests/BusinessLayer.Tests.csproj" Id="48457a11-127c-4b90-a77a-6fdd0c7362be" />
   <Project Path="BusinessLayer/BusinessLayer.csproj" Id="fd552523-106a-407c-ab07-4452d634ce05" />
+  <Project Path="Common/Common.csproj" Id="8bdc7982-f522-484f-9ae8-b69fbc72aa66" />
 </Solution>

@@ -59,7 +59,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
  * @param params - URL params
  * @returns URL object to be used by fetch
  */
-function buildUrl(path: string, params?: Record<string, string>): URL {
+export function buildUrl(path: string, params?: Record<string, string>): URL {
   const url = new URL(path, BASE_API_URL);
   if (params) {
     Object.entries(params).forEach(([key, value]) => {

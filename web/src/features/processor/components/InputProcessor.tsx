@@ -1,5 +1,5 @@
-import { Input, Button, Progress, Text } from "@mantine/core";
-import { useState } from "react";
+import { Input, Button, Text } from "@mantine/core";
+import { useRef, useState } from "react";
 
 import styles from "./InputProcessor.module.css";
 
@@ -13,8 +13,9 @@ import ProgressBar from "../../progress-bar/components/ProgressBar";
 function InputProcessor() {
   // string to process
   const [text, setText] = useState<string>("");
+  // const inputTextRef = useRef<string>("");
 
-  const { response, progress, isProcessing, error, processInput, cancel } = userInputProcessor();
+  const { response, progress, isProcessing, error, processInput, cancel, inputTextRef } = userInputProcessor();
 
   /**
    * Handles input changes
@@ -31,6 +32,7 @@ function InputProcessor() {
   const onProcessClick = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
 
+    // inputTextRef.current = text;
     await processInput(text);
   };
 
@@ -69,7 +71,7 @@ function InputProcessor() {
         {response ? (
           <div className={styles.response}>
             <span>
-              <Text>Processing input:</Text> <Text c="orange"> '{text}' </Text>
+              <Text>Processing input:</Text> <Text c="orange"> '{inputTextRef.current}' </Text>
             </span>
             <Text c="blue">'{response}'</Text>
           </div>

@@ -1,12 +1,16 @@
 using Scalar.AspNetCore;
 using BusinessLayer;
 using NLog.Extensions.Logging;
-using API.Settings;
+using Common.Settings;
+using API.HostedServices;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddBusinessLayerServices();
+
+// Add background hosted service for processing user input jobs
+builder.Services.AddHostedService<DataProcessorJobService>();
 
 builder.Services.AddMemoryCache();
 builder.Services.AddLogging(loggingBuilder =>

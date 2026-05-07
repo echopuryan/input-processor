@@ -1,8 +1,13 @@
 ﻿using API.Models;
-using API.Settings;
+using BusinessLayer.Channels;
+using BusinessLayer.Models;
 using BusinessLayer.Services;
+using Common.Settings;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using System.Net.ServerSentEvents;
+using System.Runtime.CompilerServices;
 
 namespace API.Controllers;
 
@@ -14,29 +19,88 @@ namespace API.Controllers;
 public class InputProcessorController : ControllerBase
 {
     /// <summary>
-    /// Logger
-    /// </summary>
-    private readonly ILogger<InputProcessorController> _logger;
-    /// <summary>
     /// Service for processing user inputs
     /// </summary>
     private readonly IInputProcessingService _inputProcessingService;
-    /// <summary>
-    /// App settings
-    /// </summary>
     private readonly AppSettings _appSettings;
+    private readonly IDataProcessingChannel _dataProcessingChannel;
+    private readonly ILogger<InputProcessorController> _logger;
 
     /// <summary>
     /// Initializes a new instance of the InputProcessorController class with the specified logger.
     /// </summary>
     /// <param name="logger">The logger used to record diagnostic and operational information for the controller. Cannot be null.</param>
-    public InputProcessorController(ILogger<InputProcessorController> logger, IInputProcessingService inputProcessingService, IOptions<AppSettings> appSettings)
+    public InputProcessorController(
+        ILogger<InputProcessorController> logger,
+        IInputProcessingService inputProcessingService,
+        IOptions<AppSettings> appSettings,
+        IDataProcessingChannel dataProcessingChannel)
     {
         _logger = logger;
         _inputProcessingService = inputProcessingService;
         _appSettings = appSettings.Value;
+        _dataProcessingChannel = dataProcessingChannel;
     }
 
+    [HttpPost("process")]
+    public async Task<IActionResult> ProcessInput([FromBody] UserInputProcessingModel input, CancellationToken cancellationToken)
+    {
+        var jobId = await _inputProcessingService.StartProcessingAsync(input.UserInput, cancellationToken);
+        _logger.LogInformation("Started processing job with id: {JobId}", jobId);
+        return Accepted(new { JobId = jobId });
+    }
+
+    [HttpGet("{id}/stream")]
+    public async Task<ServerSentEventsResult<ProcessedInputEvent>> SubscribeToProcessedInputEvents(string id, CancellationToken cancellationToken)
+    {
+        var lastEventId = GetLastEventIdFromRequest();
+
+        return TypedResults.ServerSentEvents(StreamEvents(lastEventId, Guid.Parse(id), cancellationToken));
+    }
+
+    /// <summary>
+    /// Helper method to stream events as they appear in the event store.
+    /// </summary>
+    /// <param name="lastEventId">Where to start from</param>
+    /// <param name="cancellationToken">The cancellation token to cancel the request.</param>
+    /// <returns>An asynchronous stream of SSE items representing processed input events.</returns>
+    private async IAsyncEnumerable<SseItem<ProcessedInputEvent>> StreamEvents(long lastEventId, Guid jobId, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await foreach (var processedEvent in _dataProcessingChannel.ReadAllAsync(jobId, cancellationToken))
+        {
+            yield return new SseItem<ProcessedInputEvent>(processedEvent) { EventId = processedEvent.Id.ToString(), ReconnectionInterval = TimeSpan.FromSeconds(5) };
+        }
+        #region OLD code
+        //var eventStream = _eventStore.Subscribe(cancellationToken);
+        //var missedEvents = await _eventStore.GetEventsAfter(lastEventId);
+
+        //// replay missed events
+        //foreach (var missedEvent in missedEvents)
+        //{
+        //    yield return new SseItem<ProcessedInputEvent>() { EventId = missedEvent.Id };
+        //}
+        //// stream new events
+        //await foreach (var newEvent in eventStream.ReadAllAsync(cancellationToken))
+        //{
+        //    yield return new SseItem<ProcessedInputEvent>() { EventId = newEvent.Id };
+        //}
+        #endregion
+    }
+
+    /// <summary>
+    /// Helper method to extract the last event ID from SSE request headers.
+    /// </summary>
+    /// <returns></returns>
+    private long GetLastEventIdFromRequest()
+    {
+        if (Request.Headers.TryGetValue("Last-Event-ID", out var lastEventIdHeader) && long.TryParse(lastEventIdHeader, out var lastEventId))
+        {
+            return lastEventId;
+        }
+        return -1; // Default to -1 if header is missing or invalid
+    }
+
+    #region OLD ENDPOINTS - to be removed or updated
     /// <summary>
     /// Simple get request to imitates the api returning some estimation on how long the processing will take. Currently it's simply the size of the processed string.
     /// </summary>
@@ -46,7 +110,6 @@ public class InputProcessorController : ControllerBase
     [HttpGet("estimate")]
     public async Task<IActionResult> GetEstimatedProcessingTime([FromQuery] string input, CancellationToken cancellationToken)
     {
-        // TODO: implement with memory cache only
         var processedInput = await _inputProcessingService.ProcessInputAsync(input, cancellationToken);
 
         return new JsonResult(new ProcessingEstimateModel { Size = processedInput.Length });
@@ -91,4 +154,5 @@ public class InputProcessorController : ControllerBase
             _logger.LogInformation("Request cancelled by the client.");
         }
     }
+    #endregion
 }

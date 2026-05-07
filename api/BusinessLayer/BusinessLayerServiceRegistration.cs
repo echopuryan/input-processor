@@ -1,4 +1,5 @@
-﻿using BusinessLayer.Services;
+﻿using BusinessLayer.Channels;
+using BusinessLayer.Services;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace BusinessLayer;
@@ -13,5 +14,9 @@ public static class BusinessLayerServiceRegistration
     {
         // Register the InputProcessingService as a transient service
         services.AddTransient<IInputProcessingService, InputProcessingService>();
+
+        // Add channel services
+        services.AddSingleton<IDataProcessingRequestChannel, DataProcessingRequestChannel>();
+        services.AddSingleton<IDataProcessingChannel, DataProcessingChannel>();
     }
 }
