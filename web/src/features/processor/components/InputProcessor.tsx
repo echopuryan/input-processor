@@ -1,5 +1,5 @@
 import { Input, Button, Text } from "@mantine/core";
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 import styles from "./InputProcessor.module.css";
 
@@ -13,7 +13,6 @@ import ProgressBar from "../../progress-bar/components/ProgressBar";
 function InputProcessor() {
   // string to process
   const [text, setText] = useState<string>("");
-  // const inputTextRef = useRef<string>("");
 
   const { response, progress, isProcessing, error, processInput, cancel, inputTextRef } = userInputProcessor();
 
@@ -40,43 +39,45 @@ function InputProcessor() {
    * Handles button clicks
    * @param event - Cancel btn click event
    */
-  const onCancelBtnClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+  const onCancelBtnClick = async(event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
 
-    cancel();
+    await cancel();
   };
 
   return (
-    <div className={styles.container}>
-      <h1>Process Your Text</h1>
-      <div className={styles.input}>
-        <Input placeholder="Input component" value={text} onChange={onInputChange} disabled={isProcessing} loading={isProcessing} />
-        <ProgressBar progress={progress} />
-      </div>
+    <div className={styles.wrapper}>
+      <div className={styles.container}>
+        <h1>Process Your Text</h1>
+        <div className={styles.input}>
+          <Input placeholder="Input component" value={text} onChange={onInputChange} disabled={isProcessing} loading={isProcessing} />
+          <ProgressBar progress={progress} />
+        </div>
 
-      {error && (
-        <Text size="md" c="red">
-          {error}
-        </Text>
-      )}
-      <section className={styles.actions}>
-        <Button variant="outline" disabled={isProcessing || !text} onClick={onProcessClick} loading={isProcessing}>
-          Process
-        </Button>
-        <Button variant="outline" color="red" onClick={onCancelBtnClick} disabled={!isProcessing}>
-          Cancel
-        </Button>
-      </section>
-      <>
+        {error && (
+          <Text size="md" c="red">
+            {error}
+          </Text>
+        )}
+        <section className={styles.actions}>
+          <Button variant="outline" disabled={isProcessing || !text} onClick={onProcessClick} loading={isProcessing}>
+            Process
+          </Button>
+          <Button variant="outline" color="red" onClick={onCancelBtnClick} disabled={!isProcessing}>
+            Cancel
+          </Button>
+        </section>
+      </div>
+      <div>
         {response ? (
           <div className={styles.response}>
-            <span>
-              <Text>Processing input:</Text> <Text c="orange"> '{inputTextRef.current}' </Text>
-            </span>
+            <Text>Processing input:</Text>
+            <Text c="orange">'{inputTextRef.current}'</Text>
+            <Text>{"-->"}</Text>
             <Text c="blue">'{response}'</Text>
           </div>
         ) : null}
-      </>
+      </div>
     </div>
   );
 }

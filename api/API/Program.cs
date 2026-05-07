@@ -10,7 +10,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddBusinessLayerServices();
 
 // Add background hosted service for processing user input jobs
-builder.Services.AddHostedService<DataProcessorJobService>();
+builder.Services.AddHostedService<DataProcessorBackgroundService>();
 
 builder.Services.AddMemoryCache();
 builder.Services.AddLogging(loggingBuilder =>

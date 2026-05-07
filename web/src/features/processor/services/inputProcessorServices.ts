@@ -17,6 +17,14 @@ export const inputProcessorServices = {
     return response.jobId;
   },
 
+  /**
+   * Cancel the long running job
+   * @param jobId - Unique ID of the job.
+   */
+  cancel: (jobId: string) => {
+    return apiClient.post(`InputProcessor/${jobId}/cancel`);
+  },
+
   //#region legacy functions
   /**
    * Starts processing and returns the stream
@@ -41,12 +49,4 @@ export const inputProcessorServices = {
     return data.size;
   },
   //#endregion
-
-  /**
-   * Cancel the processing (will cancel the pending API request)
-   * @param abortController - Abort controller to cancel the API call
-   */
-  cancel: (abortController: AbortController | null) => {
-    abortController?.abort();
-  },
 };

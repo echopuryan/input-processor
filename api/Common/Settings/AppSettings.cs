@@ -3,6 +3,7 @@
 public class AppSettings
 {
     public RandomDelayRangeSettings RandomDelayRange { get; set; }
+    public int MaxConcurrentJobs { get; set; }
 }
 
 public class RandomDelayRangeSettings

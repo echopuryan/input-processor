@@ -15,6 +15,7 @@ export function userInputProcessor() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const sourceRef = useRef<EventSource | null>(null);
   const inputTextRef = useRef<string>("");
+  const currentJobId = useRef<string>("");
 
   /**
    * Reset state
@@ -25,6 +26,7 @@ export function userInputProcessor() {
     setProgress(0);
     setError(null);
     setIsProcessing(true);
+    currentJobId.current = "";
   }, []);
 
   useEffect(() => {
@@ -46,6 +48,7 @@ export function userInputProcessor() {
    * Stream the events
    */
   const streamEvents = useCallback((text: string, jobId: string) => {
+    currentJobId.current = jobId;
     // get the events/data as the BG job processes it
     const sseUrl = buildUrl(`InputProcessor/${jobId}/stream`);
     sourceRef.current = new EventSource(sseUrl.toString());
@@ -67,6 +70,16 @@ export function userInputProcessor() {
         setIsProcessing(false);
         sessionStorage.clear();
       }
+    };
+
+    sourceRef.current.onerror = async (event: Event) => {
+      console.error(event);
+      // stop the processing
+      setIsProcessing(false);
+      // send the abort signal (not very useful here since we cancel the job separately)
+      abortControllerRef.current?.abort();
+      // close the stream (will not stop the job)
+      sourceRef?.current?.close();
     };
   }, []);
 
@@ -104,62 +117,15 @@ export function userInputProcessor() {
   }, []);
 
   /**
-   * Process user input
-   */
-  const processInputOld = useCallback(async (text: string) => {
-    // reset state
-    setResponse("");
-    setProgress(0);
-    setError(null);
-    setIsProcessing(true);
-
-    const abortController = new AbortController();
-    abortControllerRef.current = abortController;
-
-    try {
-      // get the estimate
-      const size = await inputProcessorServices.getProcessingEst(text, abortController.signal);
-
-      // start the stream
-      const reader = await inputProcessorServices.startProcessingStream(text, abortController.signal);
-
-      // Read the stream
-      const decoder = new TextDecoder();
-      let currentCharacter = 0;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const decodedText = decoder.decode(value);
-        setResponse((prev) => prev + decodedText);
-
-        currentCharacter++;
-        if (size > 0) {
-          setProgress(Math.ceil((currentCharacter * 100) / size));
-        }
-      }
-    } catch (err) {
-      const message = getErrorMessage(err);
-
-      // null means user cancelled - not an error
-      if (message === null) return;
-
-      setError(message);
-      console.error("Processing error:", err);
-    } finally {
-      setIsProcessing(false);
-      abortControllerRef.current = null;
-    }
-  }, []);
-
-  /**
    * Cancel the processing
    */
-  const cancel = useCallback(() => {
+  const cancel = useCallback(async () => {
+    // cancel the job
+    if (currentJobId.current) await inputProcessorServices.cancel(currentJobId.current);
+    sessionStorage.clear();
     // stop the processing
     setIsProcessing(false);
-    // send the abort signal
+    // send the abort signal (not very useful here since we cancel the job separately)
     abortControllerRef.current?.abort();
     // close the stream (will not stop the job)
     sourceRef?.current?.close();
@@ -172,6 +138,6 @@ export function userInputProcessor() {
     error,
     processInput,
     cancel,
-    inputTextRef
+    inputTextRef,
   };
 }

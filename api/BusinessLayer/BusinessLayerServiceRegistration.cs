@@ -1,4 +1,5 @@
 ﻿using BusinessLayer.Channels;
+using BusinessLayer.Infrastructure;
 using BusinessLayer.Services;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -18,5 +19,9 @@ public static class BusinessLayerServiceRegistration
         // Add channel services
         services.AddSingleton<IDataProcessingRequestChannel, DataProcessingRequestChannel>();
         services.AddSingleton<IDataProcessingChannel, DataProcessingChannel>();
+
+        // add job service
+        services.AddSingleton<IDataProcessingJob, DataProcessingJob>();
+        services.AddSingleton<IJobManager, JobManager>();
     }
 }

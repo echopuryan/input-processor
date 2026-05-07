@@ -1,11 +1,14 @@
 ﻿using API.Models;
 using BusinessLayer.Channels;
+using BusinessLayer.Infrastructure;
 using BusinessLayer.Models;
 using BusinessLayer.Services;
 using Common.Settings;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
+using System.Collections.Concurrent;
 using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
 
@@ -25,6 +28,16 @@ public class InputProcessorController : ControllerBase
     private readonly AppSettings _appSettings;
     private readonly IDataProcessingChannel _dataProcessingChannel;
     private readonly ILogger<InputProcessorController> _logger;
+    private readonly IJobManager _jobManager;
+    /// <summary>
+    /// Memory cache. Later on can become an external cache like Redis
+    /// </summary>
+    private readonly IMemoryCache _memoryCache;
+    private MemoryCacheEntryOptions _memoryCacheOptions = new()
+    {
+        SlidingExpiration = TimeSpan.FromMinutes(30),
+        AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(60),
+    };
 
     /// <summary>
     /// Initializes a new instance of the InputProcessorController class with the specified logger.
@@ -34,12 +47,16 @@ public class InputProcessorController : ControllerBase
         ILogger<InputProcessorController> logger,
         IInputProcessingService inputProcessingService,
         IOptions<AppSettings> appSettings,
-        IDataProcessingChannel dataProcessingChannel)
+        IDataProcessingChannel dataProcessingChannel,
+        IJobManager jobManager,
+        IMemoryCache memoryCache)
     {
         _logger = logger;
         _inputProcessingService = inputProcessingService;
         _appSettings = appSettings.Value;
         _dataProcessingChannel = dataProcessingChannel;
+        _jobManager = jobManager;
+        _memoryCache = memoryCache;
     }
 
     [HttpPost("process")]
@@ -50,12 +67,26 @@ public class InputProcessorController : ControllerBase
         return Accepted(new { JobId = jobId });
     }
 
-    [HttpGet("{id}/stream")]
-    public async Task<ServerSentEventsResult<ProcessedInputEvent>> SubscribeToProcessedInputEvents(string id, CancellationToken cancellationToken)
+    [HttpGet("{id:guid}/stream")]
+    public async Task<ServerSentEventsResult<ProcessedInputEvent>> SubscribeToProcessedInputEvents(Guid id, CancellationToken cancellationToken)
     {
         var lastEventId = GetLastEventIdFromRequest();
 
-        return TypedResults.ServerSentEvents(StreamEvents(lastEventId, Guid.Parse(id), cancellationToken));
+        return TypedResults.ServerSentEvents(StreamEvents(lastEventId, id, cancellationToken));
+    }
+
+    [HttpPost("{id:guid}/cancel")]
+    public IActionResult Cancel(Guid id, CancellationToken cancellationToken)
+    {
+        if (!_jobManager.Cancel(id))
+        {
+            return NotFound(new { Message = $"Job with id {id} not found or already completed." });
+        }
+        var cancelled = _jobManager.Cancel(id);
+
+        return cancelled
+            ? Ok(new { Message = $"Job {id} cancellation requested." })
+            : NotFound(new { Message = $"Job {id} not found or already completed." });
     }
 
     /// <summary>
@@ -66,25 +97,27 @@ public class InputProcessorController : ControllerBase
     /// <returns>An asynchronous stream of SSE items representing processed input events.</returns>
     private async IAsyncEnumerable<SseItem<ProcessedInputEvent>> StreamEvents(long lastEventId, Guid jobId, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        if (!_memoryCache.TryGetValue<ConcurrentBag<ProcessedInputEvent>>(jobId, out var cachedEvents))
+        {
+            cachedEvents = [];
+            _memoryCache.Set(jobId, cachedEvents, _memoryCacheOptions);
+        }
+
+        var missedEvents = cachedEvents?.Where(e => e.Id > lastEventId)?.ToList() ?? [];
+
+        // replay missed events from cache
+        foreach (var missedEvent in missedEvents)
+        {
+            var sseItem = new SseItem<ProcessedInputEvent>(missedEvent) { EventId = missedEvent.Id.ToString(), ReconnectionInterval = TimeSpan.FromSeconds(5) };
+            yield return sseItem;
+        }
+        // continue from the event store for new events and update cache
         await foreach (var processedEvent in _dataProcessingChannel.ReadAllAsync(jobId, cancellationToken))
         {
+            // add to the cached job events
+            cachedEvents?.Add(processedEvent);
             yield return new SseItem<ProcessedInputEvent>(processedEvent) { EventId = processedEvent.Id.ToString(), ReconnectionInterval = TimeSpan.FromSeconds(5) };
         }
-        #region OLD code
-        //var eventStream = _eventStore.Subscribe(cancellationToken);
-        //var missedEvents = await _eventStore.GetEventsAfter(lastEventId);
-
-        //// replay missed events
-        //foreach (var missedEvent in missedEvents)
-        //{
-        //    yield return new SseItem<ProcessedInputEvent>() { EventId = missedEvent.Id };
-        //}
-        //// stream new events
-        //await foreach (var newEvent in eventStream.ReadAllAsync(cancellationToken))
-        //{
-        //    yield return new SseItem<ProcessedInputEvent>() { EventId = newEvent.Id };
-        //}
-        #endregion
     }
 
     /// <summary>
@@ -99,60 +132,4 @@ public class InputProcessorController : ControllerBase
         }
         return -1; // Default to -1 if header is missing or invalid
     }
-
-    #region OLD ENDPOINTS - to be removed or updated
-    /// <summary>
-    /// Simple get request to imitates the api returning some estimation on how long the processing will take. Currently it's simply the size of the processed string.
-    /// </summary>
-    /// <param name="input"></param>
-    /// <param name="cancellationToken"></param>
-    /// <returns></returns>
-    [HttpGet("estimate")]
-    public async Task<IActionResult> GetEstimatedProcessingTime([FromQuery] string input, CancellationToken cancellationToken)
-    {
-        var processedInput = await _inputProcessingService.ProcessInputAsync(input, cancellationToken);
-
-        return new JsonResult(new ProcessingEstimateModel { Size = processedInput.Length });
-    }
-
-    /// <summary>
-    /// Process the user input and stream the processed response back one character at a time with a random delay between each character to simulate a real-time streaming response. 
-    /// The client can cancel the request at any time using the cancellation token.
-    /// </summary>
-    /// <param name="input">The user input to be processed.</param>
-    /// <param name="cancellationToken">The cancellation token to cancel the request.</param>
-    /// <returns></returns>
-    [HttpPost(Name = "ProcessInput")]
-    public async Task StreamProcessedInput([FromBody] UserInputProcessingModel input, CancellationToken cancellationToken)
-    {
-        Response.ContentType = "text/event-stream";
-        Response.Headers.CacheControl = "no-cache";
-        Response.Headers.Connection = "keep-alive";
-
-        var processedInput = await _inputProcessingService.ProcessInputAsync(input.UserInput, cancellationToken);
-        _logger.LogInformation("Processed input: '{ProcessedInput}'", processedInput);
-
-        try
-        {
-            foreach (var character in processedInput)
-            {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    _logger.LogInformation("Request cancelled by the client.");
-                    break;
-                }
-
-                _logger.LogDebug("Streaming character: {Character}", character);
-                await Response.WriteAsync(character.ToString(), cancellationToken);
-                await Response.Body.FlushAsync(cancellationToken);
-                await Task.Delay(new Random().Next(_appSettings.RandomDelayRange.Min, _appSettings.RandomDelayRange.Max), cancellationToken); // Simulate random delay between characters
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // here to simply log or do something else if needed
-            _logger.LogInformation("Request cancelled by the client.");
-        }
-    }
-    #endregion
 }

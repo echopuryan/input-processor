@@ -1,6 +1,5 @@
 ﻿using BusinessLayer.Channels;
 using BusinessLayer.Models;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -16,22 +15,8 @@ namespace BusinessLayer.Services;
 /// </summary>
 public class InputProcessingService : IInputProcessingService
 {
-    /// <summary>
-    /// Logger
-    /// </summary>
     private readonly ILogger<InputProcessingService> _logger;
-    /// <summary>
-    /// Memory cache. Later on can become an external cache like Redis  
-    /// </summary>
-    private readonly IMemoryCache _memoryCache;
-    /// <summary>
-    /// Cache entry options
-    /// </summary>
-    private MemoryCacheEntryOptions _memoryCacheOptions = new MemoryCacheEntryOptions
-    {
-        AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10),
-        SlidingExpiration = TimeSpan.FromMinutes(5)
-    };
+
     /// <summary>
     /// Service to hand the processing job to the BG service
     /// </summary>
@@ -43,38 +28,10 @@ public class InputProcessingService : IInputProcessingService
     /// <param name="logger">Logger</param>
     public InputProcessingService(
         ILogger<InputProcessingService> logger,
-        IMemoryCache memoryCache,
         IDataProcessingRequestChannel jobRequestChannel)
     {
         _logger = logger;
-        _memoryCache = memoryCache;
         _jobRequestChannel = jobRequestChannel;
-    }
-
-    /// <summary>
-    /// Process the input string by sorting the characters in the input string by ascending order of their occurrence in the input string.
-    /// </summary>
-    /// <param name="input">User input</param>
-    /// <param name="cancellationToken">Task cancellation token</param>
-    /// <returns>SortedString/base64 string</returns>
-    public Task<string> ProcessInputAsync(string input, CancellationToken cancellationToken)
-    {
-        // check the cache first
-        var cacheKey = input;
-        if (!_memoryCache.TryGetValue<string>(cacheKey, out var processedText))
-        {
-            // cache miss, process the input and 
-            _logger.LogDebug("Cache miss for input: '{Input}'", input);
-
-            processedText = GetProcessedString(input, cancellationToken);
-
-            _logger.LogDebug("Caching processed response for input: '{Input}'", input);
-            _memoryCache.Set(cacheKey, processedText, _memoryCacheOptions);
-        }
-
-        _logger.LogDebug("Processed response: {Response}", processedText);
-        // cache hit, return it w/o processing
-        return Task.FromResult(processedText ?? "");
     }
 
     /// <summary>
@@ -130,18 +87,19 @@ public class InputProcessingService : IInputProcessingService
                 break;
         }
 
-        // sort the dictionary by the character count in ascending order and then by the character itself in ascending order
-        // var sortedCharacters = inputCharacterCounts.OrderBy(c => c.Value).ThenBy(c => c.Key).ToList();
-        var sortedCharacters = inputCharacterCounts.OrderBy(c => c.Key).ToList();
+        // sort the dictionary by the character in ascending order
+        var sortedCharacters = inputCharacterCounts.OrderBy(c => c.Key);
 
         var responseBuilder = new StringBuilder();
         foreach (var c in sortedCharacters)
         {
-            responseBuilder.Append($"{c.Key}{c.Value}");
+            responseBuilder.Append(c.Key);
+            responseBuilder.Append(c.Value);
         }
 
         // append the rest of the response string
-        responseBuilder.Append($"/{base64EncodedInput}");
+        responseBuilder.Append("/");
+        responseBuilder.Append(base64EncodedInput);
         return responseBuilder.ToString();
     }
 }
