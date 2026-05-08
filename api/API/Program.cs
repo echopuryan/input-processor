@@ -1,7 +1,7 @@
 using API.Authentication;
 using API.HostedServices;
 using BusinessLayer;
-using Common.Settings;
+using BusinessLayer.Settings;
 using Microsoft.AspNetCore.Authentication;
 using NLog.Extensions.Logging;
 using Scalar.AspNetCore;

@@ -1,6 +1,6 @@
 ﻿using BusinessLayer.Channels;
 using BusinessLayer.Services;
-using Common.Settings;
+using BusinessLayer.Settings;
 using Microsoft.Extensions.Options;
 
 namespace API.HostedServices;

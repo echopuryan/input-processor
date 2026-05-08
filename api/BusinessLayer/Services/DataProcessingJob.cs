@@ -1,7 +1,7 @@
 ﻿using BusinessLayer.Channels;
 using BusinessLayer.Infrastructure;
 using BusinessLayer.Models;
-using Common.Settings;
+using BusinessLayer.Settings;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;

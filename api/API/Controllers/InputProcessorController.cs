@@ -1,12 +1,9 @@
 ﻿using API.Models;
 using BusinessLayer.Models;
 using BusinessLayer.Services;
-using Common.Settings;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Options;
 using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
 
@@ -23,7 +20,6 @@ public class InputProcessorController : ControllerBase
     /// Service for processing user inputs
     /// </summary>
     private readonly IInputProcessingService _inputProcessingService;
-    private readonly AppSettings _appSettings;
     private readonly ILogger<InputProcessorController> _logger;
 
     /// <summary>
@@ -32,12 +28,10 @@ public class InputProcessorController : ControllerBase
     /// <param name="logger">The logger used to record diagnostic and operational information for the controller. Cannot be null.</param>
     public InputProcessorController(
         ILogger<InputProcessorController> logger,
-        IInputProcessingService inputProcessingService,
-        IOptions<AppSettings> appSettings)
+        IInputProcessingService inputProcessingService)
     {
         _logger = logger;
         _inputProcessingService = inputProcessingService;
-        _appSettings = appSettings.Value;
     }
 
     [Authorize]
@@ -47,7 +41,7 @@ public class InputProcessorController : ControllerBase
         var currentUser = User.Identity!.Name!;
         var jobId = await _inputProcessingService.StartProcessingAsync(input.UserInput, currentUser, cancellationToken);
         _logger.LogInformation("User {Username} started processing job with id: {JobId}", currentUser, jobId);
-        return Accepted(new { JobId = jobId });
+        return Accepted(new ProcessInputResponse(jobId));
     }
 
     [Authorize]
@@ -66,8 +60,8 @@ public class InputProcessorController : ControllerBase
         var cancelled = await _inputProcessingService.CancelProcessingRequest(id, User.Identity!.Name!, cancellationToken);
 
         return cancelled
-            ? Ok(new { Message = $"Job {id} cancellation requested." })
-            : NotFound(new { Message = $"Job {id} not found or already completed." });
+            ? Ok(new CancelResponse($"Job {id} cancellation requested."))
+            : NotFound(new CancelResponse($"Job {id} not found or already completed."));
     }
 
     /// <summary>
@@ -97,4 +91,7 @@ public class InputProcessorController : ControllerBase
         }
         return -1; // Default to -1 if header is missing or invalid
     }
+
+    public sealed record ProcessInputResponse(Guid JobId);
+    public sealed record CancelResponse(string Message);
 }
