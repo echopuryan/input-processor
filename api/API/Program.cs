@@ -1,8 +1,10 @@
-using Scalar.AspNetCore;
-using BusinessLayer;
-using NLog.Extensions.Logging;
-using Common.Settings;
+using API.Authentication;
 using API.HostedServices;
+using BusinessLayer;
+using Common.Settings;
+using Microsoft.AspNetCore.Authentication;
+using NLog.Extensions.Logging;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,6 +15,7 @@ builder.Services.AddBusinessLayerServices();
 builder.Services.AddHostedService<DataProcessorBackgroundService>();
 
 builder.Services.AddMemoryCache();
+
 builder.Services.AddLogging(loggingBuilder =>
 {
     loggingBuilder.ClearProviders();
@@ -23,6 +26,22 @@ builder.Services.Configure<AppSettings>(builder.Configuration);
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+
+// authentication and authorization
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddAuthentication(BasicAuthHandler.SchemeName)
+    .AddScheme<AuthenticationSchemeOptions, DevAuthHandler>(
+        BasicAuthHandler.SchemeName, null);
+}
+else
+{
+    builder.Services.AddAuthentication(BasicAuthHandler.SchemeName)
+    .AddScheme<AuthenticationSchemeOptions, BasicAuthHandler>(
+        BasicAuthHandler.SchemeName, null);
+}
+
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
@@ -36,7 +55,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors(c => c.WithOrigins("http://localhost").AllowAnyHeader().AllowAnyMethod());
 
-
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();

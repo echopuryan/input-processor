@@ -1,14 +1,12 @@
 ﻿using API.Models;
-using BusinessLayer.Channels;
-using BusinessLayer.Infrastructure;
 using BusinessLayer.Models;
 using BusinessLayer.Services;
 using Common.Settings;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
-using System.Collections.Concurrent;
 using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
 
@@ -26,18 +24,7 @@ public class InputProcessorController : ControllerBase
     /// </summary>
     private readonly IInputProcessingService _inputProcessingService;
     private readonly AppSettings _appSettings;
-    private readonly IDataProcessingChannel _dataProcessingChannel;
     private readonly ILogger<InputProcessorController> _logger;
-    private readonly IJobManager _jobManager;
-    /// <summary>
-    /// Memory cache. Later on can become an external cache like Redis
-    /// </summary>
-    private readonly IMemoryCache _memoryCache;
-    private MemoryCacheEntryOptions _memoryCacheOptions = new()
-    {
-        SlidingExpiration = TimeSpan.FromMinutes(30),
-        AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(60),
-    };
 
     /// <summary>
     /// Initializes a new instance of the InputProcessorController class with the specified logger.
@@ -46,27 +33,24 @@ public class InputProcessorController : ControllerBase
     public InputProcessorController(
         ILogger<InputProcessorController> logger,
         IInputProcessingService inputProcessingService,
-        IOptions<AppSettings> appSettings,
-        IDataProcessingChannel dataProcessingChannel,
-        IJobManager jobManager,
-        IMemoryCache memoryCache)
+        IOptions<AppSettings> appSettings)
     {
         _logger = logger;
         _inputProcessingService = inputProcessingService;
         _appSettings = appSettings.Value;
-        _dataProcessingChannel = dataProcessingChannel;
-        _jobManager = jobManager;
-        _memoryCache = memoryCache;
     }
 
+    [Authorize]
     [HttpPost("process")]
     public async Task<IActionResult> ProcessInput([FromBody] UserInputProcessingModel input, CancellationToken cancellationToken)
     {
-        var jobId = await _inputProcessingService.StartProcessingAsync(input.UserInput, cancellationToken);
-        _logger.LogInformation("Started processing job with id: {JobId}", jobId);
+        var currentUser = User.Identity!.Name!;
+        var jobId = await _inputProcessingService.StartProcessingAsync(input.UserInput, currentUser, cancellationToken);
+        _logger.LogInformation("User {Username} started processing job with id: {JobId}", currentUser, jobId);
         return Accepted(new { JobId = jobId });
     }
 
+    [Authorize]
     [HttpGet("{id:guid}/stream")]
     public async Task<ServerSentEventsResult<ProcessedInputEvent>> SubscribeToProcessedInputEvents(Guid id, CancellationToken cancellationToken)
     {
@@ -75,14 +59,11 @@ public class InputProcessorController : ControllerBase
         return TypedResults.ServerSentEvents(StreamEvents(lastEventId, id, cancellationToken));
     }
 
+    [Authorize]
     [HttpPost("{id:guid}/cancel")]
-    public IActionResult Cancel(Guid id, CancellationToken cancellationToken)
+    public async Task<IActionResult> Cancel(Guid id, CancellationToken cancellationToken)
     {
-        if (!_jobManager.Cancel(id))
-        {
-            return NotFound(new { Message = $"Job with id {id} not found or already completed." });
-        }
-        var cancelled = _jobManager.Cancel(id);
+        var cancelled = await _inputProcessingService.CancelProcessingRequest(id, User.Identity!.Name!, cancellationToken);
 
         return cancelled
             ? Ok(new { Message = $"Job {id} cancellation requested." })
@@ -97,25 +78,9 @@ public class InputProcessorController : ControllerBase
     /// <returns>An asynchronous stream of SSE items representing processed input events.</returns>
     private async IAsyncEnumerable<SseItem<ProcessedInputEvent>> StreamEvents(long lastEventId, Guid jobId, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        if (!_memoryCache.TryGetValue<ConcurrentBag<ProcessedInputEvent>>(jobId, out var cachedEvents))
-        {
-            cachedEvents = [];
-            _memoryCache.Set(jobId, cachedEvents, _memoryCacheOptions);
-        }
-
-        var missedEvents = cachedEvents?.Where(e => e.Id > lastEventId)?.ToList() ?? [];
-
-        // replay missed events from cache
-        foreach (var missedEvent in missedEvents)
-        {
-            var sseItem = new SseItem<ProcessedInputEvent>(missedEvent) { EventId = missedEvent.Id.ToString(), ReconnectionInterval = TimeSpan.FromSeconds(5) };
-            yield return sseItem;
-        }
         // continue from the event store for new events and update cache
-        await foreach (var processedEvent in _dataProcessingChannel.ReadAllAsync(jobId, cancellationToken))
+        await foreach (var processedEvent in _inputProcessingService.GetProcessedInputEventsAsync(jobId, lastEventId, User.Identity!.Name!, cancellationToken))
         {
-            // add to the cached job events
-            cachedEvents?.Add(processedEvent);
             yield return new SseItem<ProcessedInputEvent>(processedEvent) { EventId = processedEvent.Id.ToString(), ReconnectionInterval = TimeSpan.FromSeconds(5) };
         }
     }

@@ -13,8 +13,8 @@ public static class BusinessLayerServiceRegistration
     /// <param name="services">The service collection to which the services will be added.</param>
     public static void AddBusinessLayerServices(this IServiceCollection services)
     {
-        // Register the InputProcessingService as a transient service
-        services.AddTransient<IInputProcessingService, InputProcessingService>();
+        // Register the InputProcessingService as a singleton service
+        services.AddSingleton<IInputProcessingService, InputProcessingService>();
 
         // Add channel services
         services.AddSingleton<IDataProcessingRequestChannel, DataProcessingRequestChannel>();
