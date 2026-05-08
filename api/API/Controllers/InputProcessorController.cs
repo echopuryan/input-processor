@@ -54,6 +54,15 @@ public class InputProcessorController : ControllerBase
     }
 
     [Authorize]
+    [HttpGet("pending-job")]
+    public async Task<IActionResult> GetPendingJobId(CancellationToken cancellationToken)
+    {
+        var username = User.Identity!.Name!;
+        var pendingJob = await _inputProcessingService.GetPendingJobByUsername(username, cancellationToken);
+        return Ok(new Job(pendingJob?.JobId, pendingJob?.RequestInput));
+    }
+
+    [Authorize]
     [HttpPost("{id:guid}/cancel")]
     public async Task<IActionResult> Cancel(Guid id, CancellationToken cancellationToken)
     {
@@ -92,6 +101,7 @@ public class InputProcessorController : ControllerBase
         return -1; // Default to -1 if header is missing or invalid
     }
 
-    public sealed record ProcessInputResponse(Guid JobId);
+    public sealed record ProcessInputResponse(Guid? JobId);
+    public sealed record Job(Guid? JobId, string? RequestInput);
     public sealed record CancelResponse(string Message);
 }

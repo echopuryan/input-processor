@@ -1,6 +1,8 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using BusinessLayer.Models;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Threading;
 
 namespace BusinessLayer.Infrastructure;
@@ -10,7 +12,7 @@ namespace BusinessLayer.Infrastructure;
 /// </summary>
 public sealed class JobManager : IJobManager
 {
-    private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _jobs = new();
+    private readonly ConcurrentDictionary<Guid, JobInfo> _jobs = new();
     private readonly ILogger<JobManager> _logger;
 
     public JobManager(ILogger<JobManager> logger)
@@ -25,9 +27,9 @@ public sealed class JobManager : IJobManager
     /// <returns>True if the job was successfully canceled, otherwise false.</returns>
     public bool Cancel(Guid jobId)
     {
-        if (_jobs.TryGetValue(jobId, out var cts))
+        if (_jobs.TryGetValue(jobId, out var jobInfo))
         {
-            cts.Cancel();
+            jobInfo.JobCancellationToken.Cancel();
             return true;
         }
         return false;
@@ -39,9 +41,9 @@ public sealed class JobManager : IJobManager
     /// <param name="jobId">Unique ID for the job.</param>
     public void Remove(Guid jobId)
     {
-        if (_jobs.TryRemove(jobId, out var cts))
+        if (_jobs.TryRemove(jobId, out var jobInfo))
         {
-            cts.Dispose();
+            jobInfo.JobCancellationToken.Dispose();
         }
     }
 
@@ -61,15 +63,37 @@ public sealed class JobManager : IJobManager
     /// <param name="jobId">The unique identifier of the job.</param>
     /// <param name="cancellationToken">Linked cancellation token.</param>
     /// <returns>The registered cancellation token.</returns>
-    public CancellationToken Register(Guid jobId, CancellationToken cancellationToken)
+    public CancellationToken Register(Guid jobId, string owner, string requestInput, CancellationToken cancellationToken)
     {
         var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-        if (!_jobs.TryAdd(jobId, cts))
+        if (!_jobs.TryAdd(jobId, new JobInfo { JobId = jobId, Owner = owner, RequestInput = requestInput, JobCancellationToken = cts }))
         {
             _logger.LogWarning("Job with {idJobId} is already registered. Returning existing cancellation token.", jobId);
-            return _jobs[jobId].Token;
+            return _jobs[jobId].JobCancellationToken.Token;
         }
         return cts.Token;
+    }
+
+    /// <summary>
+    /// Return user's pending job if exists. This is useful for scenarios where we want to prevent multiple concurrent jobs for the same user, or to provide status updates on existing jobs.
+    /// </summary>
+    /// <param name="username">User's username</param>
+    /// <returns>The pending job info if exists, otherwise null.</returns>
+    public JobInfo? GetPendingJobByUsername(string username)
+    {
+        var jobInfo = _jobs.Where(v => v.Value?.Owner == username).Select(kv => kv.Value).FirstOrDefault();
+        return jobInfo;
+    }
+    /// <summary>
+    /// Returns whether the user is the owner of the job with the specified id. This is useful for authorization checks to ensure that users can only access or cancel their own jobs.
+    /// </summary>
+    /// <param name="jobId">Unique ID for the job.</param>
+    /// <param name="username">User's username</param>
+    /// <returns>True if the user is the owner of the job, otherwise false.</returns>
+    public bool DoesUserOwnJob(Guid jobId, string username)
+    {
+        var jobInfo = _jobs.TryGetValue(jobId, out var info) ? info : null;
+        return jobInfo?.Owner == username;
     }
 }

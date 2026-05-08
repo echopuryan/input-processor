@@ -8,14 +8,13 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace BusinessLayer.Services;
 
 /// <summary>
-/// Processes the user input by sorting the characters in the input string by ascending order of their occurrence in the input string.
+/// Facade service for handling user input processing requests. The main processor is a BG job that handles it separately
 /// </summary>
 public class InputProcessingService : IInputProcessingService
 {
@@ -25,16 +24,10 @@ public class InputProcessingService : IInputProcessingService
     /// Channel for talking to the BG service that processes the input data and returns the processed events
     /// </summary>
     private readonly IDataProcessingChannel _dataProcessingChannel;
-
-
     /// <summary>
     /// Service to hand the processing job to the BG service
     /// </summary>
     private readonly IDataProcessingRequestChannel _jobRequestChannel;
-    /// <summary>
-    /// Tracks jobs and their owners
-    /// </summary>
-    private readonly ConcurrentDictionary<Guid, string> _jobs = new();
 
     /// <summary>
     /// Memory cache. Later on can become an external cache like Redis
@@ -73,17 +66,23 @@ public class InputProcessingService : IInputProcessingService
     /// <returns>A task representing the asynchronous operation, with a boolean result indicating whether the cancellation was successful.</returns>
     public Task<bool> CancelProcessingRequest(Guid jobId, string username, CancellationToken cancellationToken)
     {
-        var jobOwner = _jobs.TryGetValue(jobId, out var owner) ? owner : null;
-        if (jobOwner == username)
-        {
-            _jobs.TryRemove(jobId, out _);
-            return Task.FromResult(_jobManager.Cancel(jobId));
-        }
-        else
+        if (!_jobManager.DoesUserOwnJob(jobId, username))
         {
             _logger.LogWarning("User {Username} attempted to cancel job {JobId} but is not the owner.", username, jobId);
             return Task.FromResult(false);
         }
+
+        return Task.FromResult(_jobManager.Cancel(jobId));
+    }
+    /// <summary>
+    /// Returns the pending job ID for a given username, if any. This method is used to check if a user has an ongoing processing job that has not yet completed.
+    /// </summary>
+    /// <param name="username">The username of the user for whom to check the pending job.</param>
+    /// <param name="cancellationToken">Task cancellation token.</param>
+    /// <returns>A task representing the asynchronous operation, with a GUID result indicating the pending job ID, if any.</returns>
+    public Task<JobInfo?> GetPendingJobByUsername(string username, CancellationToken cancellationToken)
+    {
+        return Task.FromResult<JobInfo?>(_jobManager.GetPendingJobByUsername(username));
     }
 
     /// <summary>
@@ -96,8 +95,7 @@ public class InputProcessingService : IInputProcessingService
     /// <returns>An asynchronous stream of processed input events.</returns>
     public async IAsyncEnumerable<ProcessedInputEvent> GetProcessedInputEventsAsync(Guid jobId, long lastEventId, string username, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var jobOwner = _jobs.TryGetValue(jobId, out var owner) ? owner : null;
-        if (jobOwner != username)
+        if (!_jobManager.DoesUserOwnJob(jobId, username))
         {
             _logger.LogWarning("User {Username} attempted to access events for job {JobId} but is not the owner.", username, jobId);
             yield break;
@@ -121,8 +119,6 @@ public class InputProcessingService : IInputProcessingService
         {
             // add to the cached job events
             cachedEvents?.Enqueue(processedEvent);
-            // remove the job from the tracking dictionary if the processing is completed
-            if (processedEvent.IsCompleted) _jobs.TryRemove(jobId, out _);
             yield return processedEvent;
         }
     }
@@ -136,66 +132,16 @@ public class InputProcessingService : IInputProcessingService
     /// <returns>A task representing the asynchronous operation</returns>
     public async Task<Guid> StartProcessingAsync(string input, string username, CancellationToken cancellationToken)
     {
-        var processedString = GetProcessedString(input, cancellationToken);
-
-        _logger.LogDebug("Prepared string: '{ProcessedString}'", processedString);
-
         var jobId = Guid.NewGuid();
+        _logger.LogInformation("Starting processing for job {JobId} and user {Username}", jobId, username);
         // push the job request for the BG to process
         await _jobRequestChannel.WriteAsync(new DataProcessingRequest
         {
             Id = jobId,
-            UserInput = processedString,
+            Username = username,
+            UserInput = input,
         }, cancellationToken);
 
-        _jobs[jobId] = username;
-
         return jobId;
-    }
-
-    /// <summary>
-    /// Calculate the input string character frequencies, sort by the character code and append the original string as a base64 encoded string at the end.
-    /// </summary>
-    /// <param name="input">Input string</param>
-    /// <param name="cancellationToken">Task cancellation token</param>
-    /// <returns>Processed string</returns>
-    private string GetProcessedString(string input, CancellationToken cancellationToken)
-    {
-        var inputCharacterCounts = new Dictionary<char, int>();
-
-        // check if the input is null or empty
-        if (string.IsNullOrEmpty(input)) throw new ArgumentException("Input cannot be null or empty", nameof(input));
-
-        // Convert the input string to a base64 encoded string
-        var base64EncodedInput = Convert.ToBase64String(Encoding.UTF8.GetBytes(input));
-        _logger.LogInformation("Base64 encoded input: {Base64EncodedInput}", base64EncodedInput);
-
-        foreach (var c in input)
-        {
-            // update the character count in the dictionary if it already exists, otherwise add it to the dictionary with a count of 1
-            if (inputCharacterCounts.ContainsKey(c))
-                inputCharacterCounts[c]++;
-            else
-                inputCharacterCounts[c] = 1;
-
-            // NOTE: This is likely not needed in this loop as string sorting is very fast.
-            if (cancellationToken.IsCancellationRequested)
-                break;
-        }
-
-        // sort the dictionary by the character in ascending order
-        var sortedCharacters = inputCharacterCounts.OrderBy(c => c.Key);
-
-        var responseBuilder = new StringBuilder();
-        foreach (var c in sortedCharacters)
-        {
-            responseBuilder.Append(c.Key);
-            responseBuilder.Append(c.Value);
-        }
-
-        // append the rest of the response string
-        responseBuilder.Append("/");
-        responseBuilder.Append(base64EncodedInput);
-        return responseBuilder.ToString();
     }
 }

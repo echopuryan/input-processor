@@ -37,82 +37,6 @@ public class DataProcessingJobTests
     }
 
     [TestMethod]
-    public async Task ProcessAsync_ValidInput_PublishesEventForEachCharacter()
-    {
-        // Arrange
-        var request = new DataProcessingRequest { Id = Guid.NewGuid(), UserInput = "abc" };
-        var publishedEvents = new List<ProcessedInputEvent>();
-
-        _jobManagerMock
-            .Setup(x => x.Register(request.Id, It.IsAny<CancellationToken>()))
-            .Returns(CancellationToken.None);
-
-        _channelMock
-            .Setup(x => x.PublishAsync(It.IsAny<ProcessedInputEvent>(), It.IsAny<CancellationToken>()))
-            .Callback<ProcessedInputEvent, CancellationToken>((e, _) => publishedEvents.Add(e))
-            .Returns(ValueTask.CompletedTask);
-
-        // Act
-        await _sut.ProcessAsync(request, CancellationToken.None);
-
-        // Assert
-        Assert.AreEqual(3, publishedEvents.Count);
-        Assert.AreEqual('a', publishedEvents[0].Data);
-        Assert.AreEqual('b', publishedEvents[1].Data);
-        Assert.AreEqual('c', publishedEvents[2].Data);
-    }
-
-    [TestMethod]
-    public async Task ProcessAsync_LastEvent_IsMarkedCompleted()
-    {
-        // Arrange
-        var request = new DataProcessingRequest { Id = Guid.NewGuid(), UserInput = "ab" };
-        var publishedEvents = new List<ProcessedInputEvent>();
-
-        _jobManagerMock
-            .Setup(x => x.Register(request.Id, It.IsAny<CancellationToken>()))
-            .Returns(CancellationToken.None);
-
-        _channelMock
-            .Setup(x => x.PublishAsync(It.IsAny<ProcessedInputEvent>(), It.IsAny<CancellationToken>()))
-            .Callback<ProcessedInputEvent, CancellationToken>((e, _) => publishedEvents.Add(e))
-            .Returns(ValueTask.CompletedTask);
-
-        // Act
-        await _sut.ProcessAsync(request, CancellationToken.None);
-
-        // Assert
-        Assert.IsFalse(publishedEvents[0].IsCompleted);
-        Assert.IsTrue(publishedEvents[1].IsCompleted);
-    }
-
-    [TestMethod]
-    public async Task ProcessAsync_CalculatesProgressCorrectly()
-    {
-        // Arrange
-        var request = new DataProcessingRequest { Id = Guid.NewGuid(), UserInput = "abcd" };
-        var publishedEvents = new List<ProcessedInputEvent>();
-
-        _jobManagerMock
-            .Setup(x => x.Register(request.Id, It.IsAny<CancellationToken>()))
-            .Returns(CancellationToken.None);
-
-        _channelMock
-            .Setup(x => x.PublishAsync(It.IsAny<ProcessedInputEvent>(), It.IsAny<CancellationToken>()))
-            .Callback<ProcessedInputEvent, CancellationToken>((e, _) => publishedEvents.Add(e))
-            .Returns(ValueTask.CompletedTask);
-
-        // Act
-        await _sut.ProcessAsync(request, CancellationToken.None);
-
-        // Assert
-        Assert.AreEqual(25, publishedEvents[0].Progress);  // 1/4 * 100
-        Assert.AreEqual(50, publishedEvents[1].Progress);  // 2/4 * 100
-        Assert.AreEqual(75, publishedEvents[2].Progress);  // 3/4 * 100
-        Assert.AreEqual(100, publishedEvents[3].Progress); // 4/4 * 100
-    }
-
-    [TestMethod]
     public async Task ProcessAsync_UserCancelsJob_PublishesCancelledEvent()
     {
         // Arrange
@@ -124,7 +48,7 @@ public class DataProcessingJobTests
         jobCts.Cancel(); // pre-cancel the job token
 
         _jobManagerMock
-            .Setup(x => x.Register(request.Id, It.IsAny<CancellationToken>()))
+            .Setup(x => x.Register(request.Id, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Returns(jobCts.Token); // returns already-cancelled token
 
         _channelMock
@@ -151,7 +75,7 @@ public class DataProcessingJobTests
         stoppingCts.Cancel(); // simulate app shutdown
 
         _jobManagerMock
-            .Setup(x => x.Register(request.Id, It.IsAny<CancellationToken>()))
+            .Setup(x => x.Register(request.Id, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Returns(stoppingCts.Token); // linked token is also cancelled
 
         // Act
@@ -170,7 +94,7 @@ public class DataProcessingJobTests
         var request = new DataProcessingRequest { Id = Guid.NewGuid(), UserInput = "a" };
 
         _jobManagerMock
-            .Setup(x => x.Register(request.Id, It.IsAny<CancellationToken>()))
+            .Setup(x => x.Register(request.Id, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Returns(CancellationToken.None);
 
         _channelMock

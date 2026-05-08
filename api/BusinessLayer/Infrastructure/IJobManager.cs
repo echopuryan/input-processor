@@ -1,4 +1,5 @@
-﻿using System;
+﻿using BusinessLayer.Models;
+using System;
 using System.Threading;
 
 namespace BusinessLayer.Infrastructure;
@@ -14,7 +15,7 @@ public interface IJobManager
     /// <param name="jobId">The unique identifier of the job.</param>
     /// <param name="cancellationToken">Linked cancellation token.</param>
     /// <returns>The registered cancellation token.</returns>
-    CancellationToken Register(Guid jobId, CancellationToken cancellationToken);
+    CancellationToken Register(Guid jobId, string owner, string requestInput, CancellationToken cancellationToken);
     /// <summary>
     /// Cancel the job with the specified id.
     /// </summary>
@@ -33,4 +34,18 @@ public interface IJobManager
     /// </summary>
     /// <param name="jobId">Unique ID for the job.</param>
     void Remove(Guid jobId);
+    /// <summary>
+    /// Return user's pending job if exists. This is useful for scenarios where we want to prevent multiple concurrent jobs for the same user, or to provide status updates on existing jobs.
+    /// </summary>
+    /// <param name="username">User's username</param>
+    /// <returns>The pending job info if exists, otherwise null.</returns>
+    JobInfo? GetPendingJobByUsername(string username);
+    /// <summary>
+    /// Returns whether the user is the owner of the job with the specified id. This is useful for authorization checks to ensure that users can only access or cancel their own jobs.
+    /// </summary>
+    /// <param name="jobId">Unique ID for the job.</param>
+    /// <param name="username">User's username</param>
+    /// <returns>True if the user is the owner of the job, otherwise false.</returns>
+    bool DoesUserOwnJob(Guid jobId, string username);
+
 }

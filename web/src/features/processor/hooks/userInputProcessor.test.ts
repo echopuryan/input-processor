@@ -1,4 +1,4 @@
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, act, waitFor } from "@testing-library/react";
 import { userInputProcessor } from "./useInputProcessor";
 import { inputProcessorServices } from "../services/inputProcessorServices";
 import { getErrorMessage } from "../../../shared/utils/getErrorMessage";
@@ -43,9 +43,10 @@ describe("userInputProcessor", () => {
   beforeEach(() => {
     vi.stubGlobal("EventSource", MockEventSource);
     MockEventSource.reset();
-    sessionStorage.clear();
     vi.mocked(getErrorMessage).mockReturnValue("Something went wrong.");
     vi.mocked(buildUrl).mockReturnValue(new URL("http://localhost/api/InputProcessor/123/stream"));
+    // Default: no pending job on mount
+    vi.mocked(inputProcessorServices.getPendingJobId).mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -182,20 +183,6 @@ describe("userInputProcessor", () => {
       expect(result.current.isProcessing).toBe(false);
       expect(MockEventSource.latest.close).toHaveBeenCalled();
     });
-
-    it("saves job to sessionStorage", async () => {
-      vi.mocked(inputProcessorServices.startProcessingJob).mockResolvedValue("job-42");
-
-      const { result } = renderHook(() => userInputProcessor());
-
-      await act(async () => {
-        await result.current.processInput("my input");
-      });
-
-      const stored = JSON.parse(sessionStorage.getItem("processingJob")!);
-      expect(stored.jobId).toBe("job-42");
-      expect(stored.text).toBe("my input");
-    });
   });
 
   // ERROR HANDLING
@@ -260,6 +247,7 @@ describe("userInputProcessor", () => {
 
     it("closes stream and sets isProcessing to false on EventSource error", async () => {
       vi.mocked(inputProcessorServices.startProcessingJob).mockResolvedValue("job-1");
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       const { result } = renderHook(() => userInputProcessor());
 
@@ -299,7 +287,7 @@ describe("userInputProcessor", () => {
       expect(MockEventSource.latest.close).toHaveBeenCalled();
     });
 
-    it("sets isProcessing to false and clears sessionStorage", async () => {
+    it("sets isProcessing to false on cancel", async () => {
       vi.mocked(inputProcessorServices.startProcessingJob).mockResolvedValue("job-1");
       vi.mocked(inputProcessorServices.cancel).mockResolvedValue(undefined);
 
@@ -310,14 +298,12 @@ describe("userInputProcessor", () => {
       });
 
       expect(result.current.isProcessing).toBe(true);
-      expect(sessionStorage.getItem("processingJob")).not.toBeNull();
 
       await act(async () => {
         await result.current.cancel();
       });
 
       expect(result.current.isProcessing).toBe(false);
-      expect(sessionStorage.getItem("processingJob")).toBeNull();
     });
 
     it("does not throw when called with no active processing", async () => {
@@ -331,18 +317,36 @@ describe("userInputProcessor", () => {
     });
   });
 
-  // SESSION RESTORE
+  // RECONNECT ON MOUNT
 
-  describe("session restore", () => {
-    it("resumes streaming from sessionStorage on mount", () => {
-      sessionStorage.setItem("processingJob", JSON.stringify({ jobId: "restored-job", text: "hello" }));
+  describe("reconnect on mount", () => {
+    it("resumes streaming when getPendingJobId returns an active job", async () => {
+      vi.mocked(inputProcessorServices.getPendingJobId).mockResolvedValue({
+        jobId: "restored-job",
+        requestInput: "hello",
+      });
       vi.mocked(buildUrl).mockReturnValue(new URL("http://localhost/api/InputProcessor/restored-job/stream"));
 
       const { result } = renderHook(() => userInputProcessor());
 
-      expect(result.current.isProcessing).toBe(true);
+      await waitFor(() => {
+        expect(result.current.isProcessing).toBe(true);
+      });
+
       expect(MockEventSource.latest.url).toBe("http://localhost/api/InputProcessor/restored-job/stream");
       expect(buildUrl).toHaveBeenCalledWith("InputProcessor/restored-job/stream");
+    });
+
+    it("does not create EventSource when no pending job exists", async () => {
+      vi.mocked(inputProcessorServices.getPendingJobId).mockResolvedValue(null);
+
+      renderHook(() => userInputProcessor());
+
+      await waitFor(() => {
+        expect(inputProcessorServices.getPendingJobId).toHaveBeenCalled();
+      });
+
+      expect(MockEventSource.instances).toHaveLength(0);
     });
   });
 });

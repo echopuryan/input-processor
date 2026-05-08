@@ -36,4 +36,11 @@ public interface IInputProcessingService
     /// <param name="cancellationToken">Task cancellation token.</param>
     /// <returns>A task representing the asynchronous operation, with a boolean result indicating whether the cancellation was successful.</returns>
     Task<bool> CancelProcessingRequest(Guid jobId, string username, CancellationToken cancellationToken);
+    /// <summary>
+    /// Returns the pending job ID for a given username, if any. This method is used to check if a user has an ongoing processing job that has not yet completed.
+    /// </summary>
+    /// <param name="username">The username of the user for whom to check the pending job.</param>
+    /// <param name="cancellationToken">Task cancellation token.</param>
+    /// <returns>A task representing the asynchronous operation, with a GUID result indicating the pending job ID, if any.</returns>
+    Task<JobInfo?> GetPendingJobByUsername(string username, CancellationToken cancellationToken);
 }

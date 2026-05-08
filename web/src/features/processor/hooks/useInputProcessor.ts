@@ -5,8 +5,6 @@ import { buildUrl } from "../../../shared/services/apiClient";
 import type { ProcessedInputEvent } from "../types/inputProcessor.types";
 
 export function userInputProcessor() {
-  const jobStorageKey = "processingJob";
-
   const [response, setResponse] = useState("");
   const [progress, setProgress] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -25,23 +23,31 @@ export function userInputProcessor() {
     setResponse("");
     setProgress(0);
     setError(null);
-    setIsProcessing(true);
+    setIsProcessing(false);
     currentJobId.current = "";
   }, []);
 
   useEffect(() => {
-    const currentJob = sessionStorage.getItem(jobStorageKey);
+    const reconnect = async () => {
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
 
-    // no current job exists in this current session
-    if (!currentJob) return;
+      try {
+        const currentJob = await inputProcessorServices.getPendingJobId(abortController.signal);
+        // no active job found for the current user
+        if (!currentJob || !currentJob?.jobId) return;
+        // event source has already started (double use effect call)
+        if (sourceRef.current) return;
 
-    // event source has already started (double use effect call)
-    if (sourceRef.current) return;
+        const { requestInput: text, jobId } = currentJob;
+        // stream the events.
+        streamEvents(text, jobId);
+      } catch (err) {
+        console.error("Failed to check for active jobs:", err);
+      }
+    };
 
-    resetState();
-    const { text, jobId } = JSON.parse(currentJob);
-    // stream the events
-    streamEvents(text, jobId);
+    reconnect();
   }, []);
 
   /**
@@ -54,6 +60,8 @@ export function userInputProcessor() {
     sourceRef.current = new EventSource(sseUrl.toString());
 
     inputTextRef.current = text;
+
+    setIsProcessing(true);
 
     // process each message
     sourceRef.current.onmessage = (event: MessageEvent) => {
@@ -68,7 +76,6 @@ export function userInputProcessor() {
         console.info(`Input '${text}' job ID: ${jobId} finished processing. Closing the stream...`);
         sourceRef.current?.close();
         setIsProcessing(false);
-        sessionStorage.clear();
       }
     };
 
@@ -95,8 +102,6 @@ export function userInputProcessor() {
     try {
       // start the BG job and get the JOB id
       const jobId = await inputProcessorServices.startProcessingJob(text, abortController.signal);
-      // save the job ID
-      sessionStorage.setItem(jobStorageKey, JSON.stringify({ jobId, text }));
       // stream the events
       streamEvents(text, jobId);
     } catch (err) {
@@ -122,7 +127,6 @@ export function userInputProcessor() {
   const cancel = useCallback(async () => {
     // cancel the job
     if (currentJobId.current) await inputProcessorServices.cancel(currentJobId.current);
-    sessionStorage.clear();
     // stop the processing
     setIsProcessing(false);
     // send the abort signal (not very useful here since we cancel the job separately)

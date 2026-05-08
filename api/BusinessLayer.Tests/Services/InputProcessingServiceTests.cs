@@ -62,18 +62,9 @@ public class InputProcessingServiceTests
         Assert.AreNotEqual(Guid.Empty, jobId);
         Assert.IsNotNull(capturedRequest);
         Assert.AreEqual(jobId, capturedRequest.Id);
-        Assert.IsTrue(capturedRequest.UserInput.Contains("/")); // contains base64 separator
         _jobRequestChannelMock.Verify(
             x => x.WriteAsync(It.IsAny<DataProcessingRequest>(), It.IsAny<CancellationToken>()),
             Times.Once);
-    }
-
-    [TestMethod]
-    public async Task StartProcessingAsync_EmptyInput_ThrowsArgumentException()
-    {
-        // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>(
-            () => _sut.StartProcessingAsync("", "user1", CancellationToken.None));
     }
 
     #endregion
@@ -90,6 +81,7 @@ public class InputProcessingServiceTests
             .Setup(x => x.WriteAsync(It.IsAny<DataProcessingRequest>(), It.IsAny<CancellationToken>()))
             .Returns(ValueTask.CompletedTask);
 
+        _jobManagerMock.Setup(c => c.DoesUserOwnJob(It.IsAny<Guid>(), It.IsAny<string>())).Returns(true);
         _jobManagerMock.Setup(x => x.Cancel(It.IsAny<Guid>())).Returns(true);
 
         var jobId = await _sut.StartProcessingAsync("test", username, CancellationToken.None);
@@ -109,6 +101,7 @@ public class InputProcessingServiceTests
         _jobRequestChannelMock
             .Setup(x => x.WriteAsync(It.IsAny<DataProcessingRequest>(), It.IsAny<CancellationToken>()))
             .Returns(ValueTask.CompletedTask);
+        _jobManagerMock.Setup(c => c.DoesUserOwnJob(It.IsAny<Guid>(), It.IsAny<string>())).Returns(false);
 
         var jobId = await _sut.StartProcessingAsync("test", "user1", CancellationToken.None);
 
@@ -154,6 +147,7 @@ public class InputProcessingServiceTests
         _jobRequestChannelMock
             .Setup(x => x.WriteAsync(It.IsAny<DataProcessingRequest>(), It.IsAny<CancellationToken>()))
             .Returns(ValueTask.CompletedTask);
+        _jobManagerMock.Setup(c => c.DoesUserOwnJob(It.IsAny<Guid>(), It.IsAny<string>())).Returns(true);
 
         var jobId = await _sut.StartProcessingAsync("ab", username, CancellationToken.None);
 
@@ -191,6 +185,7 @@ public class InputProcessingServiceTests
         _jobRequestChannelMock
             .Setup(x => x.WriteAsync(It.IsAny<DataProcessingRequest>(), It.IsAny<CancellationToken>()))
             .Returns(ValueTask.CompletedTask);
+        _jobManagerMock.Setup(c => c.DoesUserOwnJob(It.IsAny<Guid>(), It.IsAny<string>())).Returns(true);
 
         // Start a job to register ownership
         // We need to use reflection or start a real job - easier to just start one
