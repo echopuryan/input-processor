@@ -1,5 +1,7 @@
 ﻿using BusinessLayer.Models;
+using BusinessLayer.Settings;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -17,10 +19,12 @@ public sealed class DataProcessingChannel : IDataProcessingChannel
 {
     private readonly ConcurrentDictionary<Guid, Channel<ProcessedInputEvent>> _channels = new();
     private readonly ILogger<DataProcessingChannel> _logger;
+    private readonly AppSettings _appSettings;
 
-    public DataProcessingChannel(ILogger<DataProcessingChannel> logger)
+    public DataProcessingChannel(ILogger<DataProcessingChannel> logger, IOptions<AppSettings> options)
     {
         _logger = logger;
+        _appSettings = options.Value;
     }
 
     /// <summary>
@@ -33,10 +37,10 @@ public sealed class DataProcessingChannel : IDataProcessingChannel
     {
         var channel = _channels.GetOrAdd(processedEvent.RequestId, _ =>
         {
-            var options= new BoundedChannelOptions(100)
+            var options= new BoundedChannelOptions(_appSettings.MaxProcessingChannelSize)
             {
-                FullMode = BoundedChannelFullMode.DropOldest,
-                SingleReader = true,
+                FullMode = BoundedChannelFullMode.Wait,
+                SingleReader = false,
                 SingleWriter = true
              };
 
